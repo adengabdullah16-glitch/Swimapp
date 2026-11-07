@@ -182,6 +182,15 @@
     .save-toast.show { opacity:1; transform:translateY(0); }
     .save-toast.error { background:#dc2626; box-shadow:0 4px 12px rgba(220,38,38,.4); max-width:calc(100vw - 40px); }
     .save-toast.pending { background:#0369a1; }
+    /* Dialog di dalam halaman (pengganti confirm/alert bawaan browser yang bisa diblokir) */
+    .ui-dialog { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:center; justify-content:center; z-index:100000; padding:16px; }
+    .ui-dialog.show { display:flex; }
+    .ui-dialog-box { background:#fff; border-radius:14px; max-width:460px; width:100%; padding:22px; box-shadow:0 20px 50px rgba(0,0,0,.35); font-family:'Segoe UI', Tahoma, sans-serif; }
+    .ui-dialog-msg { white-space:pre-line; font-size:14px; color:#0f172a; font-weight:600; line-height:1.55; margin-bottom:18px; max-height:60vh; overflow:auto; }
+    .ui-dialog-btns { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+    .ui-dlg-btn { padding:11px 16px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; font-weight:800; cursor:pointer; font-size:13px; }
+    .ui-dlg-btn.primary { background:#0369a1; color:#fff; border-color:#0369a1; }
+    .ui-dlg-btn.danger { background:#dc2626; color:#fff; border-color:#dc2626; }
     .login-link { color:#0284c7; font-weight:800; text-decoration:none; font-style:normal; }
     .boot-status { font-size:12px; color:#0369a1; font-weight:800; margin-top:12px; min-height:16px; }
     @media (max-width: 700px) {
@@ -980,6 +989,48 @@
     const IS_RECOVERY = /type=recovery/.test(location.hash);
     const sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
+    // ---------- DIALOG DI DALAM HALAMAN ----------
+    // confirm()/alert() bawaan browser bisa diblokir (pratinjau file, browser di dalam WA/IG, "jangan tampilkan dialog lagi").
+    // Kalau diblokir, confirm() langsung dianggap "Batal" sehingga tombol terlihat tidak bereaksi.
+    let uiDialogChain = Promise.resolve();
+    function uiChoice(message, buttons) {
+        const run = () => new Promise(resolve => {
+            const ov = document.getElementById('uiDialog');
+            const box = document.getElementById('uiDialogBtns');
+            document.getElementById('uiDialogMsg').textContent = String(message);
+            box.innerHTML = '';
+            const close = v => { ov.classList.remove('show'); document.removeEventListener('keydown', onKey, true); resolve(v); };
+            const onKey = e => {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); const c = buttons.find(b => b.cancel); close(c ? c.value : null); }
+                else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); const pr = buttons.find(b => b.primary) || buttons[buttons.length - 1]; close(pr.value); }
+                else if (e.key === ' ') { e.stopPropagation(); }
+            };
+            buttons.forEach(b => {
+                const el = document.createElement('button');
+                el.type = 'button';
+                el.className = 'ui-dlg-btn ' + (b.cls || '');
+                el.textContent = b.label;
+                el.onclick = () => close(b.value);
+                box.appendChild(el);
+            });
+            document.addEventListener('keydown', onKey, true);
+            ov.classList.add('show');
+            setTimeout(() => { const pr = box.querySelector('.primary'); if (pr) pr.focus(); }, 30);
+        });
+        const pr = uiDialogChain.then(run);
+        uiDialogChain = pr.catch(() => {});
+        return pr;
+    }
+    function uiConfirm(message, okLabel, danger) {
+        return uiChoice(message, [
+            { label: 'Batal', value: false, cancel: true },
+            { label: okLabel || 'Ya, lanjutkan', value: true, primary: true, cls: danger === false ? 'primary' : 'danger primary' }
+        ]);
+    }
+    window.alert = function(message) {
+        uiChoice(message, [{ label: 'OK', value: true, primary: true, cancel: true, cls: 'primary' }]);
+    };
+
     // Preferensi tampilan per perangkat (tidak perlu disimpan di server)
     const STORAGE_PRINT_COLS = 'ksc_print_cols_v1';
     const STORAGE_HIDDEN_COLS = 'ksc_hidden_cols_v1';
@@ -1520,7 +1571,7 @@
     window.resetClubPassword = async function(clubId) {
         const c = clubs.find(x => x.id === clubId);
         if (!c) return;
-        if (!confirm(`Kirim email reset password ke ${c.username} (${c.namaClub})?`)) return;
+        if (!(await uiConfirm(`Kirim email reset password ke ${c.username} (${c.namaClub})?`, '📧 Kirim', false))) return;
         const { error } = await sb.auth.resetPasswordForEmail(c.username, { redirectTo: appRedirectUrl() });
         alert(error ? '❌ ' + translateAuthError(error) : '✅ Email reset terkirim. Minta pelatih membuka email tersebut.');
     };
@@ -1528,7 +1579,7 @@
     window.deleteClub = async function(clubId) {
         const c = clubs.find(x => x.id === clubId);
         if (!c) return;
-        if (!confirm(`Hapus profil club "${c.namaClub}"?\n\n• Atlet yang sudah didaftarkan TIDAK terhapus, menjadi data manual admin.\n• Akun login (${c.username}) masih ada di Supabase → Authentication. Hapus di sana jika perlu.`)) return;
+        if (!(await uiConfirm(`Hapus profil club "${c.namaClub}"?\n\n• Atlet yang sudah didaftarkan TIDAK terhapus, menjadi data manual admin.\n• Akun login (${c.username}) masih ada di Supabase → Authentication. Hapus di sana jika perlu.`, '🗑️ Hapus club'))) return;
         const { error } = await sb.from('club').delete().eq('id', clubId);
         if (error) { alert('❌ Gagal menghapus club: ' + error.message); return; }
         clubs = clubs.filter(x => x.id !== clubId);
@@ -1597,28 +1648,28 @@
         }
     };
 
-    window.applyMatrixPresetDefault = function() {
-        if (!confirm('Isi matriks sesuai PRESET DEFAULT?\n\n• GROUP 6B & 6A: 4 nomor dasar\n• GROUP 5-1: 14 nomor umum\n• SENIOR: kosong')) return;
+    window.applyMatrixPresetDefault = async function() {
+        if (!(await uiConfirm('Isi matriks sesuai PRESET DEFAULT?\n\n• GROUP 6B & 6A: 4 nomor dasar\n• GROUP 5-1: 14 nomor umum\n• SENIOR: kosong', 'Terapkan preset', false))) return;
         groupEventMatrix = createPresetMatrix();
         renderMatrixDashboard();
     };
-    window.applyMatrixAll = function() {
-        if (!confirm('Centang SEMUA nomor untuk semua GROUP?')) return;
+    window.applyMatrixAll = async function() {
+        if (!(await uiConfirm('Centang SEMUA nomor untuk semua GROUP?', 'Centang semua', false))) return;
         GROUP_LIST.forEach(g => {
             if (!groupEventMatrix[g]) groupEventMatrix[g] = {};
             EVENTS.forEach(ev => { groupEventMatrix[g][ev.key] = true; });
         });
         renderMatrixDashboard();
     };
-    window.applyMatrixNone = function() {
-        if (!confirm('Kosongkan SEMUA nomor untuk semua GROUP?')) return;
+    window.applyMatrixNone = async function() {
+        if (!(await uiConfirm('Kosongkan SEMUA nomor untuk semua GROUP?', 'Kosongkan'))) return;
         GROUP_LIST.forEach(g => {
             if (!groupEventMatrix[g]) groupEventMatrix[g] = {};
             EVENTS.forEach(ev => { groupEventMatrix[g][ev.key] = false; });
         });
         renderMatrixDashboard();
     };
-    window.saveMatrixAndApply = function() {
+    window.saveMatrixAndApply = async function() {
         if (!groupEventMatrix) loadMatrix();
         let uncheckCount = 0;
         dataPeserta.forEach(p => {
@@ -1627,7 +1678,7 @@
             });
         });
         if (uncheckCount > 0) {
-            if (!confirm(`⚠️ ${uncheckCount} pilihan nomor akan otomatis di-UNCHECK.\n\nLanjutkan?`)) return;
+            if (!(await uiConfirm(`⚠️ ${uncheckCount} pilihan nomor akan otomatis di-UNCHECK.\n\nLanjutkan?`, 'Simpan & uncheck'))) return;
         }
         let totalUnchecked = 0;
         dataPeserta.forEach(p => {
@@ -2302,14 +2353,14 @@
 
     function selectedPeserta() { return dataPeserta.filter(p => selectedRows.has(p.id)); }
 
-    window.deleteSelectedRows = function() {
+    window.deleteSelectedRows = async function() {
         const chosen = selectedPeserta();
         if (chosen.length === 0) return;
         if (currentUser?.role === 'club') {
             if (chosen.some(p => p.ownerClubId !== currentUser.clubId)) { alert('❌ Anda hanya bisa menghapus atlet milik club Anda sendiri.'); return; }
             if (checkClubLocked()) { alert('🔒 Pendaftaran sudah dikunci/ditutup oleh panitia.'); return; }
         }
-        if (!confirm(`Hapus ${chosen.length} peserta (seluruh baris)?`)) return;
+        if (!(await uiConfirm(`Hapus ${chosen.length} peserta (seluruh baris)?\n\nData atlet beserta hasil lombanya ikut terhapus dari database.`, `🗑️ Hapus ${chosen.length} baris`))) return;
         dataPeserta = dataPeserta.filter(p => !selectedRows.has(p.id));
         selectedRows.clear();
         isDirty = true;
@@ -2318,14 +2369,14 @@
         showToast(`🗑️ ${chosen.length} peserta dihapus`, null, 2000);
     };
 
-    window.hapusNomorTerpilih = function() {
+    window.hapusNomorTerpilih = async function() {
         const chosen = selectedPeserta();
         if (chosen.length === 0) return;
         if (currentUser?.role === 'club') {
             if (chosen.some(p => p.ownerClubId !== currentUser.clubId)) { alert('❌ Anda hanya bisa mengubah atlet milik club Anda sendiri.'); return; }
             if (checkClubLocked()) { alert('🔒 Pendaftaran sudah dikunci/ditutup oleh panitia.'); return; }
         }
-        if (!confirm(`Hapus semua NOMOR dari ${chosen.length} peserta terpilih?`)) return;
+        if (!(await uiConfirm(`Hapus semua NOMOR dari ${chosen.length} peserta terpilih?\n\nNama atlet tetap ada, hanya centang nomor lomba yang dilepas.`, '✖️ Hapus nomor'))) return;
         let totalUncheck = 0;
         chosen.forEach(p => EVENTS.forEach(ev => { if (p[ev.key]) { p[ev.key] = false; totalUncheck++; } }));
         selectedRows.clear();
@@ -2522,10 +2573,10 @@
         }, 100);
     };
 
-    window.clearAll = function() {
+    window.clearAll = async function() {
         if (currentUser?.role !== 'admin') { alert('❌ Hanya admin yang bisa reset semua data.'); return; }
         if (dataPeserta.length === 0) return;
-        if (!confirm('Hapus SEMUA data peserta? (Tindakan tidak bisa dibatalkan)')) return;
+        if (!(await uiConfirm('Hapus SEMUA data peserta?\n\nTindakan ini menghapus seluruh atlet dan hasil dari database, dan tidak bisa dibatalkan.', '🗑️ Hapus semua'))) return;
         dataPeserta = [];
         globalHarga = 0;
         const h = document.getElementById('inpHarga'); if (h) h.value = '0';
@@ -2615,12 +2666,15 @@
         }
     });
 
-    document.getElementById('tbody').addEventListener('click', function(e) {
+    document.getElementById('tbody').addEventListener('click', async function(e) {
         if (e.target.classList.contains('del-btn')) {
-            const idx = idxById(e.target.dataset.del);
-            if (idx < 0) return;
-            if (currentUser?.role === 'club' && dataPeserta[idx]?.ownerClubId !== currentUser.clubId) { alert('❌ Bukan atlet Anda.'); return; }
-            if (confirm('Hapus peserta ini?')) {
+            const delId = e.target.dataset.del;
+            const p0 = dataPeserta[idxById(delId)];
+            if (!p0) return;
+            if (currentUser?.role === 'club' && p0.ownerClubId !== currentUser.clubId) { alert('❌ Bukan atlet Anda.'); return; }
+            if (await uiConfirm(`Hapus peserta "${p0.nama || '(tanpa nama)'}"?`, '🗑️ Hapus')) {
+                const idx = idxById(delId);   // cari ulang: data bisa berubah selama dialog terbuka
+                if (idx < 0) return;
                 dataPeserta.splice(idx, 1);
                 selectedRows.clear();
                 isDirty = true;
@@ -2874,8 +2928,8 @@
         saveData();
     };
 
-    window.clearAllResults = function() {
-        if (!confirm('Hapus SEMUA catatan waktu (hasil)?')) return;
+    window.clearAllResults = async function() {
+        if (!(await uiConfirm('Hapus SEMUA catatan waktu (hasil) di database?', '🗑️ Hapus semua hasil'))) return;
         dataPeserta.forEach(p => { p.hasil = {}; p.ketHasil = {}; p.statusHasil = {}; });
         isDirty = true;
         saveData();
@@ -3595,8 +3649,8 @@
         if (modalBody) modalBody.scrollTop = modalBody.scrollHeight;
     };
 
-    window.deleteEventConfig = function(index) {
-        if (confirm("Hapus event ini?")) { customEvents.splice(index, 1); renderEventConfig(); }
+    window.deleteEventConfig = async function(index) {
+        if (await uiConfirm('Hapus event ini?', 'Hapus')) { customEvents.splice(index, 1); renderEventConfig(); }
     };
 
     window.regenerateAllEvents = function() {
@@ -4067,13 +4121,17 @@
     // ============================================================
     // IMPORT FORM A3 (ADMIN)
     // ============================================================
-    document.getElementById('fileInput').addEventListener('change', function(e) {
+    document.getElementById('fileInput').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
         let mode = 'append';
         if (dataPeserta.length > 0) {
-            const replace = confirm('Ada ' + dataPeserta.length + ' data peserta.\n\nOK = Ganti (Replace) semua data lama\nCancel = Tambahkan (Append) ke data lama');
-            mode = replace ? 'replace' : 'append';
+            mode = await uiChoice('Sudah ada ' + dataPeserta.length + ' data peserta.\n\nGANTI = hapus semua data lama, isi dengan file ini.\nTAMBAHKAN = data file ini ditambahkan ke data lama.', [
+                { label: 'Batal', value: null, cancel: true },
+                { label: '➕ Tambahkan', value: 'append', cls: 'primary' },
+                { label: '🔁 Ganti semua', value: 'replace', cls: 'danger' }
+            ]);
+            if (!mode) { e.target.value = ''; return; }
         }
         parseExcelFormA3(file, mode, function(newList, addedCount, colMap) {
             if (!newList) { e.target.value = ''; return; }
@@ -4210,7 +4268,7 @@
             try { data = JSON.parse(evt.target.result); } catch (err) { alert('❌ Gagal membaca file. Pastikan file berekstensi .json.'); return; }
             if (!data || !(data.peserta || data.customEvents)) { alert('❌ Format file master tidak valid.'); return; }
             const jml = Array.isArray(data.peserta) ? data.peserta.length : 0;
-            if (!confirm(`Impor master akan MENGGANTI data di database untuk kegiatan ini:\n\n• ${jml} peserta (peserta lama dihapus)\n• hasil lomba, nomor lomba, matriks group, dan pengaturan\n\nLanjutkan?`)) return;
+            if (!(await uiConfirm(`Impor master akan MENGGANTI data di database untuk kegiatan ini:\n\n• ${jml} peserta (peserta lama dihapus)\n• hasil lomba, nomor lomba, matriks group, dan pengaturan\n\nLanjutkan?`, '📂 Ganti dengan master'))) return;
             try {
                 const isNew = data.format === 'swimapp-supabase-v1';
                 const clubIds = new Set(clubs.map(c => c.id));
@@ -4329,5 +4387,11 @@
     });
 
 </script>
+<div class="ui-dialog" id="uiDialog" role="dialog" aria-modal="true">
+    <div class="ui-dialog-box">
+        <div class="ui-dialog-msg" id="uiDialogMsg"></div>
+        <div class="ui-dialog-btns" id="uiDialogBtns"></div>
+    </div>
+</div>
 </body>
 </html>
