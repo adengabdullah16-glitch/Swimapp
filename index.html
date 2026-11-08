@@ -84,6 +84,15 @@
     .dash-input-group { display:flex; flex-direction:column; gap:10px; max-width:500px; margin:0 auto 20px; text-align:left; }
     .dash-input-group label { font-size:12px; font-weight:800; color:#475569; }
     .dash-input-group input { padding:14px; border:2px solid #cbd5e1; border-radius:10px; font-size:16px; font-weight:800; color:#0f172a; text-align:center; }
+    .dash-input-group textarea { padding:12px 14px; border:2px solid #cbd5e1; border-radius:10px; font-size:14px; font-weight:600; color:#0f172a; font-family:inherit; resize:vertical; min-height:90px; line-height:1.5; }
+    .dash-input-group textarea:focus { outline:none; border-color:#0284c7; box-shadow:0 0 0 4px rgba(2,132,199,.15); }
+    .dash-check-row { display:flex; gap:10px 22px; justify-content:center; flex-wrap:wrap; margin:-6px auto 18px; max-width:560px; }
+    .dash-check-row label { display:flex; gap:8px; align-items:center; font-weight:800; font-size:13px; color:#0f172a; cursor:pointer; }
+    .dash-check-row input { width:18px; height:18px; accent-color:#0284c7; }
+    .migrasi-warn { display:none; max-width:560px; margin:0 auto 18px; background:#fef2f2; border:2px solid #fca5a5; color:#991b1b; border-radius:10px; padding:10px 14px; font-size:12px; font-weight:800; text-align:left; }
+    .form-note-box { display:none; margin:14px 0 4px; max-width:620px; border:2px solid #dc2626; border-radius:10px; background:#fff; padding:12px 16px; }
+    .form-note-box .form-note-title { font-size:12px; font-weight:900; color:#991b1b; margin-bottom:6px; letter-spacing:.5px; }
+    .form-note-box .form-note-text { white-space:pre-wrap; font-size:13px; color:#0f172a; line-height:1.55; }
     .dash-input-group input:focus { outline:none; border-color:#0284c7; box-shadow:0 0 0 4px rgba(2,132,199,.15); }
     .dash-actions { display:grid; grid-template-columns:1fr 1fr; gap:15px; max-width:500px; margin:0 auto; }
     
@@ -505,6 +514,20 @@
                 <input type="checkbox" id="chkPendaftaranDibuka" onchange="togglePendaftaran(this.checked)" style="width:20px; height:20px; accent-color:#059669;">
                 Pendaftaran club DIBUKA (club bisa tambah/ubah atlet)
             </label>
+            <div class="migrasi-warn" id="migrasiWarn">⚠️ Kota, Note Form A3, dan pilihan kolom belum bisa disimpan: kolom database belum ada. Jalankan file <b>migrasi-v2.sql</b> di Supabase → SQL Editor, lalu muat ulang halaman ini.</div>
+            <div class="dash-input-group">
+                <label>KOTA (untuk titimangsa cetak Form A3):</label>
+                <input type="text" id="inpKota" placeholder="Contoh: Bandung" oninput="saveData()">
+            </div>
+            <div class="dash-input-group">
+                <label>NOTE FORM A3 (tampil di layar Form A3 &amp; ikut tercetak):</label>
+                <textarea id="inpNoteForm" rows="4" placeholder="Contoh: Pembayaran ke rek. BRI 1234-5678 a.n. Panitia, paling lambat 20 November 2026." oninput="renderFormNote(); saveData()"></textarea>
+            </div>
+            <div class="dash-check-row">
+                <label><input type="checkbox" id="chkTampilSeed" onchange="onTampilKolomChange()"> Tampilkan kolom SEED TIME</label>
+                <label><input type="checkbox" id="chkTampilKet" onchange="onTampilKolomChange()"> Tampilkan kolom KETERANGAN</label>
+            </div>
+            <p style="font-size:11px; margin:-10px auto 18px; max-width:560px;">Pilihan kolom berlaku untuk layar club dan semua cetakan Form A3. Layar admin selalu menampilkan semua kolom.</p>
             <div class="dash-actions">
                 <button type="button" class="btn btn-master" onclick="downloadMaster()" style="justify-content:center; padding:15px; font-size:14px;">💾 Simpan Master (JSON)</button>
                 <button type="button" class="btn btn-master" onclick="document.getElementById('masterInput').click()" style="justify-content:center; padding:15px; font-size:14px;">📂 Impor Master (JSON) ke Database</button>
@@ -568,7 +591,7 @@
         </div>
         <div class="action-buttons" style="margin-left:auto; gap:6px;">
             <button type="button" class="btn btn-outline admin-only" onclick="toggleHiddenPanel()" id="btnHiddenCols" style="background:#fef3c7; border-color:#fcd34d; color:#78350f; display:none;">👁️ Hidden Kolom</button>
-            <button type="button" class="btn btn-print" onclick="openPrintFormModal()">🖨️ Print Form</button>
+            <button type="button" class="btn btn-print" onclick="printFormA3()">🖨️ Print Form</button>
             <button type="button" class="btn btn-warning" onclick="exportExcel()">📊 Export Form</button>
             <button type="button" class="btn btn-danger admin-only" onclick="clearAll()" style="display:none;">🗑️ Reset</button>
         </div>
@@ -665,22 +688,12 @@
             </table>
         </div>
     </div>
-</div>
-
-<!-- MODAL PRINT FORM A3 -->
-<div class="modal-overlay no-print" id="printFormModal">
-    <div class="modal-card wide">
-        <div class="modal-head"><h2>🖨️ Pilih Kolom untuk Dicetak</h2><button type="button" class="modal-close" onclick="closePrintFormModal()">✕</button></div>
-        <div class="modal-body">
-            <p style="font-size:12px; color:#475569; margin-bottom:15px; background:#e0f2fe; padding:10px; border-radius:8px; border:1px dashed #7dd3fc;">💡 Centang kolom yang ingin DICETAK.</p>
-            <div class="print-config-list" id="printFormConfigList"></div>
-        </div>
-        <div class="modal-actions">
-            <button type="button" class="cancel" onclick="closePrintFormModal()">Batal</button>
-            <button type="button" class="save" onclick="doPrintFormA3()">🖨️ Print Sekarang</button>
-        </div>
+    <div class="form-note-box" id="formNoteBox">
+        <div class="form-note-title">📌 NOTE</div>
+        <div class="form-note-text" id="formNoteText"></div>
     </div>
 </div>
+
 <!-- ==================== VIEW 2: TIMER OPERATOR ==================== -->
 <div class="view" id="view-timer">
     <div class="timer-container">
@@ -730,8 +743,8 @@
             <label>GROUP :</label>
             <select id="filterGroup" onchange="renderBukuAcara()">
                 <option value="ALL">SEMUA GROUP</option>
-                <option value="GROUP 6B">GROUP 6B (≤5 th)</option>
-                <option value="GROUP 6A">GROUP 6A (6-7 th)</option>
+                <option value="GROUP 6B">GROUP 6+ (≤5 th)</option>
+                <option value="GROUP 6A">GROUP 6 (6-7 th)</option>
                 <option value="GROUP 5">GROUP 5 (8-9 th)</option>
                 <option value="GROUP 4">GROUP 4 (10-11 th)</option>
                 <option value="GROUP 3">GROUP 3 (12-13 th)</option>
@@ -836,7 +849,7 @@
             <label>FILTER GROUP :</label>
             <select id="resFilterGroup" onchange="renderResult()">
                 <option value="ALL">SEMUA GROUP</option>
-                <option value="GROUP 6B">GROUP 6B</option><option value="GROUP 6A">GROUP 6A</option>
+                <option value="GROUP 6B">GROUP 6+</option><option value="GROUP 6A">GROUP 6</option>
                 <option value="GROUP 5">GROUP 5</option><option value="GROUP 4">GROUP 4</option>
                 <option value="GROUP 3">GROUP 3</option><option value="GROUP 2">GROUP 2</option>
                 <option value="GROUP 1">GROUP 1</option><option value="SENIOR">SENIOR</option>
@@ -889,7 +902,7 @@
             </select>
             <select id="sertFilterGroup" onchange="onSertModeChange()" style="padding:8px 12px; border:2px solid #cbd5e1; border-radius:8px; font-size:12px; font-weight:800; font-family:inherit; color:#0f172a; background:#fff; cursor:pointer;">
                 <option value="ALL">Semua Group</option>
-                <option value="GROUP 6B">GROUP 6B</option><option value="GROUP 6A">GROUP 6A</option>
+                <option value="GROUP 6B">GROUP 6+</option><option value="GROUP 6A">GROUP 6</option>
                 <option value="GROUP 5">GROUP 5</option><option value="GROUP 4">GROUP 4</option>
                 <option value="GROUP 3">GROUP 3</option><option value="GROUP 2">GROUP 2</option>
                 <option value="GROUP 1">GROUP 1</option><option value="SENIOR">SENIOR</option>
@@ -922,7 +935,7 @@
             <label>FILTER GROUP :</label>
             <select id="bsFilterGroup" onchange="renderBestSwimmer()">
                 <option value="ALL">SEMUA GROUP</option>
-                <option value="GROUP 6B">GROUP 6B</option><option value="GROUP 6A">GROUP 6A</option>
+                <option value="GROUP 6B">GROUP 6+</option><option value="GROUP 6A">GROUP 6</option>
                 <option value="GROUP 5">GROUP 5</option><option value="GROUP 4">GROUP 4</option>
                 <option value="GROUP 3">GROUP 3</option><option value="GROUP 2">GROUP 2</option>
                 <option value="GROUP 1">GROUP 1</option><option value="SENIOR">SENIOR</option>
@@ -1115,6 +1128,9 @@
         if (usia <= 19) return { kode:'GROUP 1',  usia };
         return { kode:'SENIOR', usia };
     }
+    // Nama TAMPILAN group. Kode di sistem & database tetap 'GROUP 6B'/'GROUP 6A'.
+    const GROUP_DISPLAY = { 'GROUP 6B': 'GROUP 6+', 'GROUP 6A': 'GROUP 6' };
+    function groupName(code) { return GROUP_DISPLAY[code] || code || ''; }
     function getGroupLabel(p) {
         const g = hitungGrup(p.tahun);
         return g ? g.kode : 'TANPA-GROUP';
@@ -1605,10 +1621,10 @@
         html += '</tr></thead><tbody>';
 
         GROUP_LIST.forEach(g => {
-            html += `<tr><td class="group-name">${g}</td>`;
+            html += `<tr><td class="group-name">${groupName(g)}</td>`;
             EVENTS.forEach(ev => {
                 const checked = isEventAllowedForGroup(g, ev.key);
-                html += `<td class="check-cell"><label title="${ev.fullName} - ${g}"><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleMatrix('${g}','${ev.key}',this.checked)"></label></td>`;
+                html += `<td class="check-cell"><label title="${ev.fullName} - ${groupName(g)}"><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleMatrix('${g}','${ev.key}',this.checked)"></label></td>`;
             });
             html += '</tr>';
         });
@@ -1624,7 +1640,7 @@
                 let cls = 'partial';
                 if (allowed === 0) cls = 'none';
                 else if (allowed === EVENTS.length) cls = 'all';
-                infoHtml += `<span class="matrix-info-item ${cls}">${g}: ${allowed}/${EVENTS.length} nomor</span>`;
+                infoHtml += `<span class="matrix-info-item ${cls}">${groupName(g)}: ${allowed}/${EVENTS.length} nomor</span>`;
             });
             infoDiv.innerHTML = infoHtml;
         }
@@ -1642,14 +1658,14 @@
                 let cls = 'partial';
                 if (allowed === 0) cls = 'none';
                 else if (allowed === EVENTS.length) cls = 'all';
-                infoHtml += `<span class="matrix-info-item ${cls}">${g}: ${allowed}/${EVENTS.length} nomor</span>`;
+                infoHtml += `<span class="matrix-info-item ${cls}">${groupName(g)}: ${allowed}/${EVENTS.length} nomor</span>`;
             });
             infoDiv.innerHTML = infoHtml;
         }
     };
 
     window.applyMatrixPresetDefault = async function() {
-        if (!(await uiConfirm('Isi matriks sesuai PRESET DEFAULT?\n\n• GROUP 6B & 6A: 4 nomor dasar\n• GROUP 5-1: 14 nomor umum\n• SENIOR: kosong', 'Terapkan preset', false))) return;
+        if (!(await uiConfirm('Isi matriks sesuai PRESET DEFAULT?\n\n• GROUP 6+ & GROUP 6: 4 nomor dasar\n• GROUP 5-1: 14 nomor umum\n• SENIOR: kosong', 'Terapkan preset', false))) return;
         groupEventMatrix = createPresetMatrix();
         renderMatrixDashboard();
     };
@@ -1803,8 +1819,18 @@
         if (r.status) p.statusHasil[r.ev_key] = r.status; else delete p.statusHasil[r.ev_key];
         if (r.ket) p.ketHasil[r.ev_key] = r.ket; else delete p.ketHasil[r.ev_key];
     }
+    // Kolom tambahan (migrasi-v2.sql). Hanya dikirim kalau kolomnya sudah ada di database.
+    function hasKegiatanV2() { return !!kegiatan && ('catatan_form' in kegiatan); }
+    function kegSetting(key, def) { return (kegiatan && kegiatan[key] !== undefined && kegiatan[key] !== null) ? kegiatan[key] : def; }
     function collectKegiatan() {
+        const v2 = hasKegiatanV2() ? {
+            kota: val('inpKota'),
+            catatan_form: (document.getElementById('inpNoteForm') || {}).value || '',
+            tampil_seed: !!(document.getElementById('chkTampilSeed') || {}).checked,
+            tampil_ket: !!(document.getElementById('chkTampilKet') || {}).checked
+        } : {};
         return JSON.stringify({
+            ...v2,
             nama: globalNamaKegiatan,
             harga_per_nomor: Math.max(0, Math.round(globalHarga) || 0),
             jumlah_lintasan: getLanes(),
@@ -1843,7 +1869,15 @@
         if (!val('bsPointScheme')) setVal('bsPointScheme', '5-3-2-1');
         const chk = document.getElementById('chkPendaftaranDibuka');
         if (chk) chk.checked = !!k.pendaftaran_dibuka;
+        setVal('inpKota', k.kota || '');
+        setVal('inpNoteForm', k.catatan_form || '');
+        const cs = document.getElementById('chkTampilSeed'); if (cs) cs.checked = kegSetting('tampil_seed', true) !== false;
+        const ck = document.getElementById('chkTampilKet'); if (ck) ck.checked = kegSetting('tampil_ket', true) !== false;
+        const v2 = hasKegiatanV2();
+        const mw = document.getElementById('migrasiWarn'); if (mw) mw.style.display = v2 ? 'none' : 'block';
+        ['inpKota', 'inpNoteForm', 'chkTampilSeed', 'chkTampilKet'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !v2; });
         updateGlobalTitle();
+        renderFormNote();
     }
 
     function defaultCustomEvents() {
@@ -1958,6 +1992,21 @@
         clearTimeout(syncTimer);
         syncTimer = setTimeout(syncNow, 600);
         if (syncState !== 'error') syncState = 'pending';
+    }
+    window.onTampilKolomChange = function() {
+        if (kegiatan && hasKegiatanV2()) {
+            kegiatan.tampil_seed = document.getElementById('chkTampilSeed').checked;
+            kegiatan.tampil_ket = document.getElementById('chkTampilKet').checked;
+        }
+        saveData();
+    };
+    function renderFormNote() {
+        const box = document.getElementById('formNoteBox');
+        if (!box) return;
+        const note = (currentUser?.role === 'admin' && document.getElementById('inpNoteForm'))
+            ? document.getElementById('inpNoteForm').value : kegSetting('catatan_form', '');
+        document.getElementById('formNoteText').textContent = note || '';
+        box.style.display = (note && note.trim()) ? 'block' : 'none';
     }
     function saveResultMeta() {
         resultMeta.titimangsa = val('inpTitimangsa');
@@ -2290,6 +2339,15 @@
         applyHiddenColumns();
     };
 
+    // Seed Time / Keterangan disembunyikan dari CLUB kalau dimatikan di Dashboard admin
+    function forcedHiddenCols() {
+        const set = new Set();
+        if (currentUser?.role === 'club') {
+            if (!kegSetting('tampil_seed', true)) set.add('seed');
+            if (!kegSetting('tampil_ket', true)) set.add('ket');
+        }
+        return set;
+    }
     function applyHiddenColumns() {
         const table = document.getElementById('sheetTable');
         if (!table) return;
@@ -2305,7 +2363,7 @@
         const allRows = table.querySelectorAll('tbody tr');
         Object.keys(colIndexMap).forEach(colId => {
             const idx = colIndexMap[colId];
-            const isHidden = hiddenCols.has(colId);
+            const isHidden = hiddenCols.has(colId) || forcedHiddenCols().has(colId);
             const th = allThs[idx];
             const filterTh = allFilterThs[idx];
             if (th) th.classList.toggle('hidden-col', isHidden);
@@ -2419,7 +2477,7 @@
                 if (key === 'biaya') cellVal = formatRupiah(hitungBiayaRaw(p));
                 else if (key === 'pelatih') cellVal = p.namaPelatih || '';
                 else if (key === 'nopelatih') cellVal = p.noPelatih || '';
-                else if (key === 'ag') cellVal = getGroupLabel(p);
+                else if (key === 'ag') cellVal = groupName(getGroupLabel(p));
                 else if (key === 'no') {
                     const idx = baseData.indexOf(p) + 1;
                     if (!String(idx).includes(val)) return false;
@@ -2495,7 +2553,7 @@
                     cbHtml += `<td class="cb-cell" title="${title}"><label style="${!allowed ? 'opacity:0.35; cursor:not-allowed; background:#f1f5f9;' : ''}"><input type="checkbox" data-idx="${originalIdx}" data-field="${ev.key}" ${p[ev.key] ? 'checked' : ''} ${disabled ? 'disabled' : ''}></label></td>`;
                 });
                 const agData = hitungGrup(p.tahun);
-                const agStr = agData ? agData.kode : (p.nama ? '⚠️ -' : '-');
+                const agStr = agData ? groupName(agData.kode) : (p.nama ? '⚠️ -' : '-');
 
                 html += `<tr class="${rowClass}">
                     <td class="row-select-cell no-print"><input type="checkbox" data-rowidx="${originalIdx}" ${isSelected ? 'checked' : ''} onchange="toggleRowSelect(this)"></td>
@@ -2607,7 +2665,7 @@
                     const agCell = row.querySelector('.ag-cell');
                     const agData = hitungGrup(target.value);
                     const nama = dataPeserta[idx].nama || '';
-                    if (agCell) agCell.textContent = agData ? agData.kode : (nama ? '⚠️ -' : '-');
+                    if (agCell) agCell.textContent = agData ? groupName(agData.kode) : (nama ? '⚠️ -' : '-');
                     // Perbarui checkbox nomor sesuai group baru (sebelumnya tetap disabled sampai halaman di-render ulang)
                     const pRow = dataPeserta[idx];
                     row.querySelectorAll('td.cb-cell input[type=checkbox]').forEach(cb => {
@@ -2832,7 +2890,7 @@
                     if (p) {
                         let yob = p.tahun ? String(p.tahun).trim() : '';
                         let age = yob ? (COMP_YEAR - parseInt(yob)) : '';
-                        let ag = getGroupLabel(p);
+                        let ag = groupName(getGroupLabel(p));
                         let hasilVal = p.hasil && p.hasil[evConfig.evKey] != null ? formatHasil(p.hasil[evConfig.evKey]) : '';
                         let originalIdx = p.id;
                         let statusVal = p.statusHasil && p.statusHasil[evConfig.evKey] ? p.statusHasil[evConfig.evKey] : '';
@@ -3019,7 +3077,7 @@
                 htmlContainer += `<div class="res-group">
                     <div class="res-group-title">
                         ${fullTitle.toUpperCase()}
-                        <span class="res-group-badge">📊 ${groupLabel}</span>
+                        <span class="res-group-badge">📊 ${groupName(groupLabel)}</span>
                     </div>
                     <table class="result-line-style">
                         <thead><tr>
@@ -3039,7 +3097,7 @@
                     const timeStr = p.hasil && p.hasil[evConfig.evKey] != null ? formatHasil(p.hasil[evConfig.evKey]) : '';
                     const statusVal = p.statusHasil && p.statusHasil[evConfig.evKey] ? p.statusHasil[evConfig.evKey] : '';
                     const yob = p.tahun || '';
-                    const gLabel = getGroupLabel(p);
+                    const gLabel = groupName(getGroupLabel(p));
                     const seed = p.seed || 'NT';
 
                     let rowClass = ''; let medalIcon = '';
@@ -3165,7 +3223,7 @@
             const pageLabel = (mode !== 'search') ? `<div style="position:absolute; bottom:6px; right:14px; font-size:9px; color:#94a3b8; font-weight:700;">${pageIdx + 1} / ${matched.length}</div>` : '';
             const gLabel = getGroupLabel(p);
             const ageInfo = hitungGrup(p.tahun);
-            const groupStr = gLabel === 'TANPA-GROUP' ? '-' : gLabel;
+            const groupStr = gLabel === 'TANPA-GROUP' ? '-' : groupName(gLabel);
             const ageStr = ageInfo ? `${ageInfo.usia} th` : '-';
             const titimangsaHtml = resultMeta.titimangsa ? `<div class="sert-titimangsa">${esc(resultMeta.titimangsa)}</div>` : '';
             const groupBadgeHtml = `<div class="group-badge">${esc(groupStr)} • ${ageStr}</div>`;
@@ -3326,7 +3384,7 @@
 
             html += `<div class="bs-card">
                 <div class="bs-card-header">
-                    <div class="bs-card-title">🏅 ${groupLabel} - ${genderLabel}</div>
+                    <div class="bs-card-title">🏅 ${groupName(groupLabel)} - ${genderLabel}</div>
                     <div class="bs-mvp-badge">MVP</div>
                 </div>
                 <div class="bs-mvp-main">
@@ -3425,7 +3483,7 @@
             for (let idx = 0; idx < chunk.length; idx++) assignMap[laneOrder[idx]] = chunk[idx];
             tempHeatData[heatNum] = assignMap;
             const glabel = chunk.__groupLabel || '';
-            heatOptions += `<option value="${heatNum}">HEAT ${String(heatNum).padStart(2, '0')}${glabel ? ' - ' + glabel : ''}</option>`;
+            heatOptions += `<option value="${heatNum}">HEAT ${String(heatNum).padStart(2, '0')}${glabel ? ' - ' + groupName(glabel) : ''}</option>`;
         });
         selHeat.innerHTML = heatOptions;
         if (heats.length === 1) { selHeat.value = "1"; renderLaneCards(); }
@@ -3683,101 +3741,123 @@
     // ============================================================
     // PRINT FORM A3
     // ============================================================
-    const PRINT_FORM_FIELDS = [
-        { key: 'nama', label: 'Nama Lengkap', default: true },
-        { key: 'jk', label: 'L/P', default: true },
-        { key: 'klub', label: 'Asal Sekolah / Klub', default: true },
-        { key: 'tahun', label: 'Tahun Lahir', default: true },
-        { key: 'ag', label: 'GROUP (Grup Umur)', default: true },
-        { key: 'seed', label: 'Seed Time', default: true },
-        { key: 'events', label: 'Semua Kolom Event', default: true },
-        { key: 'biaya', label: 'Biaya', default: true },
-        { key: 'ket', label: 'Keterangan (Lunas/Belum)', default: true },
-        { key: 'pelatih', label: 'Nama Pelatih', default: true },
-        { key: 'nopelatih', label: 'No Pelatih', default: true }
-    ];
+    // ============================================================
+    // PRINT FORM A3 — langsung cetak, tanpa pop-up pilihan kolom
+    // Kolom: tetap + nomor yang dicentang minimal 1 atlet + Seed/Keterangan sesuai Dashboard
+    // ============================================================
+    function infoClubCetak(rows) {
+        if (currentUser?.role === 'club') {
+            const c = clubs.find(x => x.id === currentUser.clubId);
+            return { nama: c ? c.namaClub : (currentUser.namaClub || ''), official: c ? c.official : (currentUser.official || ''), wa: c ? (c.waOriginal || c.wa || '') : '' };
+        }
+        const ids = [...new Set(rows.map(p => p.ownerClubId || ''))];
+        if (ids.length === 1 && ids[0]) {
+            const c = clubs.find(x => x.id === ids[0]);
+            if (c) return { nama: c.namaClub, official: c.official, wa: c.waOriginal || c.wa || '' };
+        }
+        const namaKlub = [...new Set(rows.map(p => (p.klub || '').trim().toUpperCase()))];
+        if (rows.length && namaKlub.length === 1 && namaKlub[0]) {
+            const pelatih = [...new Set(rows.map(p => (p.namaPelatih || '').trim()).filter(Boolean))];
+            const noWa = [...new Set(rows.map(p => (p.noPelatih || '').trim()).filter(Boolean))];
+            return { nama: rows[0].klub.trim(), official: pelatih.length === 1 ? pelatih[0] : '', wa: noWa.length === 1 ? noWa[0] : '' };
+        }
+        return null;   // berarti "Semua Club"
+    }
 
-    window.openPrintFormModal = function() {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_PRINT_COLS) || '{}');
-        const container = document.getElementById('printFormConfigList');
-        if (!container) return;
-        container.innerHTML = PRINT_FORM_FIELDS.map(f => {
-            const checked = saved[f.key] !== undefined ? saved[f.key] : f.default;
-            return `<label class="print-config-item">
-                <input type="checkbox" data-printcol="${f.key}" ${checked ? 'checked' : ''}>
-                <div style="flex:1;">
-                    <div style="font-size:13px; font-weight:700; color:#0f172a;">${f.label}</div>
-                    <div class="desc">Tampilkan kolom ini saat print</div>
-                </div>
-            </label>`;
-        }).join('');
-        document.getElementById('printFormModal').classList.add('show');
-    };
-    window.closePrintFormModal = function() { document.getElementById('printFormModal').classList.remove('show'); };
+    function titimangsaCetak() {
+        const tgl = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        const kota = kegSetting('kota', '') || '';
+        return (kota.trim() ? kota.trim() + ', ' : '') + tgl;
+    }
 
-    window.doPrintFormA3 = function() {
-        const saved = {};
-        document.querySelectorAll('#printFormConfigList input[data-printcol]').forEach(inp => { saved[inp.dataset.printcol] = inp.checked; });
-        localStorage.setItem(STORAGE_PRINT_COLS, JSON.stringify(saved));
+    window.printFormA3 = function() {
+        const rows = currentFilteredData.slice();
+        if (rows.length === 0) { alert('Tidak ada data peserta untuk dicetak.'); return; }
 
-        const showCol = saved;
-        const showEvents = showCol.events !== false;
+        const showSeed = kegSetting('tampil_seed', true) !== false;
+        const showKet = kegSetting('tampil_ket', true) !== false;
+        const evCols = EVENTS.filter(ev => rows.some(p => p[ev.key]));   // hanya nomor yang terisi
 
-        let headers = ['NO'];
-        if (showCol.nama !== false) headers.push('NAMA LENGKAP');
-        if (showCol.jk !== false) headers.push('L/P');
-        if (showCol.klub !== false) headers.push('ASAL SEKOLAH / KLUB');
-        if (showCol.tahun !== false) headers.push('THN LAHIR');
-        if (showCol.ag !== false) headers.push('GROUP');
-        if (showCol.seed !== false) headers.push('SEED TIME');
-        if (showEvents) EVENTS.forEach(ev => headers.push(ev.header));
-        if (showCol.biaya !== false) headers.push('BIAYA');
-        if (showCol.ket !== false) headers.push('KETERANGAN');
-        if (showCol.pelatih !== false) headers.push('NAMA PELATIH');
-        if (showCol.nopelatih !== false) headers.push('NO PELATIH');
+        const cols = [
+            { h: 'NO', cell: (p, i) => i + 1 },
+            { h: 'NAMA LENGKAP', cls: 'left', cell: p => p.nama || '' },
+            { h: 'L/P', cell: p => p.jk || '' },
+            { h: 'ASAL SEKOLAH / KLUB', cls: 'left', cell: p => p.klub || '' },
+            { h: 'THN LAHIR', cell: p => p.tahun || '' },
+            { h: 'GROUP', cell: p => hasValidTahun(p) ? groupName(getGroupLabel(p)) : '-' }
+        ];
+        if (showSeed) cols.push({ h: 'SEED TIME', cell: p => p.seed || 'NT' });
+        const firstEvIdx = cols.length;
+        evCols.forEach(ev => cols.push({ h: ev.header, ev: ev.key, cell: p => p[ev.key] ? '✓' : '' }));
+        cols.push({ h: 'BIAYA', cls: 'right', cell: p => hitungBiayaRaw(p) > 0 ? formatRupiah(hitungBiayaRaw(p)) : '-' });
+        if (showKet) cols.push({ h: 'KETERANGAN', cell: p => p.ket || '' });
 
-        let rows = [];
-        currentFilteredData.forEach((p, i) => {
-            let row = [i + 1];
-            if (showCol.nama !== false) row.push(p.nama || '');
-            if (showCol.jk !== false) row.push(p.jk || '');
-            if (showCol.klub !== false) row.push(p.klub || '');
-            if (showCol.tahun !== false) row.push(p.tahun || '');
-            if (showCol.ag !== false) row.push(getGroupLabel(p));
-            if (showCol.seed !== false) row.push(p.seed || 'NT');
-            if (showEvents) EVENTS.forEach(ev => row.push(p[ev.key] ? 'V' : ''));
-            if (showCol.biaya !== false) row.push(hitungBiayaRaw(p) > 0 ? hitungBiayaRaw(p) : '-');
-            if (showCol.ket !== false) row.push(p.ket || '');
-            if (showCol.pelatih !== false) row.push(p.namaPelatih || '');
-            if (showCol.nopelatih !== false) row.push(p.noPelatih || '');
-            rows.push(row);
-        });
+        const bodyHtml = rows.map((p, i) => '<tr>' + cols.map(c => {
+            const na = c.ev && !p[c.ev] && !isEventAllowedForPeserta(p, c.ev);
+            const cls = [c.cls || '', c.ev ? 'ev' : '', na ? 'na' : ''].join(' ').trim();
+            return `<td class="${cls}">${esc(String(c.cell(p, i)))}</td>`;
+        }).join('') + '</tr>').join('');
 
-        const printWin = window.open('', '_blank');
-        printWin.document.write(`<!DOCTYPE html><html><head><title>Form A3 - ${esc(globalNamaKegiatan)}</title>
+        const totalNomor = rows.reduce((n, p) => n + EVENTS.filter(ev => p[ev.key]).length, 0);
+        const totalBiaya = rows.reduce((n, p) => n + hitungBiayaRaw(p), 0);
+        let footHtml = '<tr>';
+        footHtml += `<td colspan="${firstEvIdx}" class="right">JUMLAH :</td>`;
+        evCols.forEach(ev => { footHtml += `<td>${rows.filter(p => p[ev.key]).length}</td>`; });
+        footHtml += `<td class="right">${esc(formatRupiah(totalBiaya))}</td>`;
+        if (showKet) footHtml += '<td></td>';
+        footHtml += '</tr>';
+
+        const info = infoClubCetak(rows);
+        const infoHtml = info
+            ? `<div class="club-info"><span><b>Club:</b> ${esc(info.nama || '-')}</span><span><b>Official:</b> ${esc(info.official || '-')}</span><span><b>No. WA:</b> ${esc(info.wa || '-')}</span></div>`
+            : `<div class="club-info"><span><b>Club:</b> Semua Club</span></div>`;
+        const note = (kegSetting('catatan_form', '') || '').trim();
+        const noteHtml = note ? `<div class="note"><div class="note-title">NOTE</div><div class="note-text">${esc(note)}</div></div>` : '<div></div>';
+        const judulFile = ['Form A3', globalNamaKegiatan, info ? info.nama : 'Semua Club'].join(' - ').replace(/[\\/:*?"<>|]/g, '');
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(judulFile)}</title>
         <style>
-            @page { size: A4 landscape; margin: 8mm; }
-            body { font-family: Arial, sans-serif; font-size: 9pt; padding: 10px; }
-            h2 { text-align: center; font-size: 13pt; margin-bottom: 4px; text-transform: uppercase; }
-            h3 { text-align: center; font-size: 11pt; margin-bottom: 12px; text-transform: uppercase; font-weight: normal; }
-            table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-            th { background: #1e40af; color: #fff; padding: 5px 3px; border: 1px solid #1e3a8a; text-transform: uppercase; font-size: 7.5pt; }
-            td { border: 1px solid #999; padding: 4px 3px; text-align: center; }
-            td.left { text-align: left; }
-            tr:nth-child(even) td { background: #f8fafc; }
-            .footer { margin-top: 20px; text-align: right; font-size: 9pt; }
+            @page { size: A4 landscape; margin: 10mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; padding: 6px; font-size: 10pt; }
+            h2 { text-align: center; font-size: 14pt; margin: 0 0 3px; text-transform: uppercase; }
+            h3 { text-align: center; font-size: 11pt; margin: 0 0 10px; font-weight: normal; text-transform: uppercase; letter-spacing: .5px; }
+            .club-info { display: flex; gap: 28px; flex-wrap: wrap; font-size: 10pt; margin: 0 0 8px; padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 4px; }
+            table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; }
+            th { background: #e2e8f0; color: #0f172a; padding: 5px 4px; border: 1px solid #64748b; font-size: 8pt; text-transform: uppercase; }
+            td { border: 1px solid #94a3b8; padding: 4px; text-align: center; }
+            td.left { text-align: left; } td.right { text-align: right; white-space: nowrap; }
+            td.ev { font-weight: bold; font-size: 10pt; }
+            td.na { background: #e5e7eb; }
+            tfoot td { font-weight: bold; background: #f1f5f9; border-top: 2px solid #334155; }
+            .summary { margin-top: 4px; font-size: 9pt; text-align: right; }
+            .bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-top: 14px; page-break-inside: avoid; }
+            .note { flex: 0 0 55%; border: 1.5px solid #111; border-radius: 4px; padding: 8px 12px; min-height: 28mm; }
+            .note-title { font-weight: bold; font-size: 9pt; margin-bottom: 4px; }
+            .note-text { white-space: pre-wrap; font-size: 9.5pt; line-height: 1.45; }
+            .titimangsa { font-size: 10pt; text-align: right; white-space: nowrap; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         </style></head><body>
         <h2>${esc(globalNamaKegiatan)}</h2>
-        <h3>Form A3 - Daftar Peserta</h3>
+        <h3>Form A3 – Daftar Peserta</h3>
+        ${infoHtml}
         <table>
-            <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-            <tbody>${rows.map(r => '<tr>' + r.map((c, idx) => `<td class="${headers[idx] === 'NAMA LENGKAP' || headers[idx] === 'ASAL SEKOLAH / KLUB' ? 'left' : ''}">${esc(c)}</td>`).join('') + '</tr>').join('')}</tbody>
+            <thead><tr>${cols.map(c => `<th>${esc(c.h)}</th>`).join('')}</tr></thead>
+            <tbody>${bodyHtml}</tbody>
+            <tfoot>${footHtml}</tfoot>
         </table>
-        <div class="footer"><div>Total Peserta: <b>${currentFilteredData.length}</b></div><div>Titimangsa: ${resultMeta.titimangsa || '....................'}</div></div>
-        </body></html>`);
-        printWin.document.close();
-        setTimeout(() => { printWin.print(); }, 300);
-        closePrintFormModal();
+        <div class="summary">Total nomor: <b>${totalNomor}</b> &nbsp;·&nbsp; Total peserta: <b>${rows.length}</b> &nbsp;·&nbsp; Total biaya: <b>${esc(formatRupiah(totalBiaya))}</b></div>
+        <div class="bottom">${noteHtml}<div class="titimangsa">${esc(titimangsaCetak())}</div></div>
+        </body></html>`;
+
+        const w = window.open('', '_blank');
+        if (!w) { alert('Jendela cetak diblokir browser. Izinkan pop-up untuk situs ini, lalu klik Print Form lagi.'); return; }
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 400);
     };
 
     // ============================================================
@@ -3846,7 +3926,7 @@
                 'GKP 25M', 'GKP 50M', 'GKP 100M', 'IM 100M', 'IM 200M',
                 'BIAYA', 'KETERANGAN', 'NAMA PELATIH/ PEMBINA', 'NO PELATIH/PEMBINA']);
             currentFilteredData.forEach((p, i) => {
-                wsData.push([i + 1, p.nama || '', p.jk || '', p.klub || '', p.tahun || '', getGroupLabel(p), p.seed || 'NT',
+                wsData.push([i + 1, p.nama || '', p.jk || '', p.klub || '', p.tahun || '', groupName(getGroupLabel(p)), p.seed || 'NT',
                     p.kbgb25 ? 'V' : '', p.kbgd25 ? 'V' : '', p.fins25 ? 'V' : '',
                     p.gb25 ? 'V' : '', p.gb50 ? 'V' : '', p.gb100 ? 'V' : '',
                     p.gd25 ? 'V' : '', p.gd50 ? 'V' : '', p.gd100 ? 'V' : '',
@@ -3897,7 +3977,7 @@
             const fullTitle = `${evConfig.title} - ${autoDesc}`;
             sortedGroups.forEach(groupLabel => {
                 const groupList = byGroup[groupLabel].sort((a, b) => Number(a.hasil[evConfig.evKey]) - Number(b.hasil[evConfig.evKey]));
-                wsData.push([`${fullTitle.toUpperCase()} — ${groupLabel}`]);
+                wsData.push([`${fullTitle.toUpperCase()} — ${groupName(groupLabel)}`]);
                 wsData.push(['NO', 'NAMA ATLET', 'KLUB / SEKOLAH', 'GROUP', 'CATATAN WAKTU', 'KETERANGAN']);
                 groupList.forEach((p, idx) => {
                     const ketVal = p.ketHasil && p.ketHasil[evConfig.evKey] ? p.ketHasil[evConfig.evKey] : '';
@@ -3929,7 +4009,7 @@
         sortedGroupKeys.forEach(gKey => {
             const [groupLabel, jk] = gKey.split('|');
             const group = groups[gKey];
-            wsData.push([`KATEGORI: ${groupLabel} - ${jk === 'L' ? 'PUTRA' : 'PUTRI'}`]);
+            wsData.push([`KATEGORI: ${groupName(groupLabel)} - ${jk === 'L' ? 'PUTRA' : 'PUTRI'}`]);
             wsData.push(['RANK', 'NAMA ATLET', 'KLUB / SEKOLAH', 'JUARA 1', 'JUARA 2', 'JUARA 3', 'TOTAL NOMOR', 'TOTAL POIN', 'STATUS']);
             group.forEach((stat, idx) => {
                 wsData.push([idx + 1, (stat.nama || '').toUpperCase(), (stat.klub || '-').toUpperCase(),
@@ -3969,14 +4049,14 @@
                 let assignMap = {};
                 for (let idx = 0; idx < chunk.length; idx++) assignMap[laneOrder[idx]] = chunk[idx];
                 const glabel = chunk.__groupLabel || '';
-                wsData.push([`HEAT ${String(heatNum).padStart(2, '0')} / ${totalHeats}${glabel ? ' — ' + glabel : ''}`]);
+                wsData.push([`HEAT ${String(heatNum).padStart(2, '0')} / ${totalHeats}${glabel ? ' — ' + groupName(glabel) : ''}`]);
                 wsData.push(['Ln', 'Athlete Name', 'Note', 'YoB', 'Group', 'Team Name', 'Seedtime', 'Hasil']);
                 for (let lane = 1; lane <= lanesCount; lane++) {
                     let p = assignMap[lane];
                     if (p) {
                         let yob = p.tahun || '';
                         let age = yob ? (COMP_YEAR - parseInt(yob)) : '';
-                        let ag = getGroupLabel(p);
+                        let ag = groupName(getGroupLabel(p));
                         let hasilVal = p.hasil && p.hasil[evConfig.evKey] != null ? formatHasil(p.hasil[evConfig.evKey]) : '';
                         let seedVal = p.seed || 'NT';
                         wsData.push([lane, p.nama.toUpperCase(), ag, `${yob} ${age!==''?'('+age+')':''}`, ag, (p.klub||'').toUpperCase(), seedVal, hasilVal]);
