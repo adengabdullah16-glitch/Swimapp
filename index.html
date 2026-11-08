@@ -1458,20 +1458,23 @@
         finally { btn.disabled = false; }
     };
 
-    // Logout: ketuk dua kali (tidak memakai confirm(), karena dialog bisa diblokir di HP/pratinjau)
-    let logoutArmed = false, logoutTimer = null;
+    // Logout: satu ketuk + konfirmasi di dalam halaman.
+    // Sesi dihapus dari perangkat ini saja (scope 'local'), jadi tetap berhasil walau koneksi ke server gagal.
+    let loggingOut = false;
     window.doLogout = async function() {
+        const pending = syncState !== 'ok' || !!syncTimer || syncing;
+        const msg = pending
+            ? 'Keluar dari aplikasi?\n\nMasih ada perubahan yang sedang disimpan. Aplikasi akan mencoba menyimpannya dulu (maks. 5 detik).'
+            : 'Keluar dari aplikasi?';
+        if (!(await uiConfirm(msg, '🚪 Logout'))) return;
         const btn = document.querySelector('.logout-btn');
-        if (!logoutArmed) {
-            logoutArmed = true;
-            btn.textContent = '⚠️ Ketuk lagi untuk keluar';
-            logoutTimer = setTimeout(() => { logoutArmed = false; btn.textContent = '🚪 LOGOUT'; }, 3000);
-            return;
-        }
-        clearTimeout(logoutTimer);
-        btn.textContent = '⏳ Keluar...';
-        try { if (syncState !== 'ok' || syncTimer) await syncNow(); } catch (e) {}
-        try { await sb.auth.signOut(); } catch (e) {}
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Keluar...'; }
+        if (pending) { try { await Promise.race([flushSync(), sleep(5000)]); } catch (e) {} }
+        loggingOut = true;
+        try { if (rtChannel) sb.removeChannel(rtChannel); } catch (e) {}
+        try { await sb.auth.signOut({ scope: 'local' }); } catch (e) {}
+        // Jaga-jaga: pastikan token sesi Supabase benar-benar terhapus dari browser
+        try { Object.keys(localStorage).filter(k => /^sb-.*-auth-token/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
         location.reload();
     };
 
@@ -4458,6 +4461,7 @@
     window.addEventListener('online', () => { if (syncState !== 'ok') syncNow(); });
 
     window.addEventListener('beforeunload', function(e) {
+        if (loggingOut) return;
         if (syncState !== 'ok' || syncTimer || syncing) {
             syncNow();
             e.preventDefault();
