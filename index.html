@@ -191,6 +191,13 @@
     .save-toast.show { opacity:1; transform:translateY(0); }
     .save-toast.error { background:#dc2626; box-shadow:0 4px 12px rgba(220,38,38,.4); max-width:calc(100vw - 40px); }
     .save-toast.pending { background:#0369a1; }
+    /* Tombol intip password */
+    .pw-wrap { position:relative; display:flex; flex-direction:column; }
+    .pw-wrap > input { padding-right:46px !important; width:100%; box-sizing:border-box; }
+    .dash-input-group .pw-wrap > input { padding-left:46px !important; }
+    .pw-eye { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:36px; height:36px; border:none; background:transparent; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; display:flex; align-items:center; justify-content:center; color:#475569; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; touch-action:none; }
+    .pw-eye.holding { background:#e2e8f0; }
+    .pw-eye:hover, .pw-eye:focus-visible { background:#e2e8f0; outline:none; }
     /* Dialog di dalam halaman (pengganti confirm/alert bawaan browser yang bisa diblokir) */
     .ui-dialog { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; align-items:center; justify-content:center; z-index:100000; padding:16px; }
     .ui-dialog.show { display:flex; }
@@ -1044,6 +1051,53 @@
         uiChoice(message, [{ label: 'OK', value: true, primary: true, cancel: true, cls: 'primary' }]);
     };
 
+    // ---------- INTIP PASSWORD ----------
+    // Setiap kolom password diberi tombol 👁: TAHAN untuk melihat isi, lepas untuk menyembunyikan (supaya tahu kalau salah ketik)
+    function setupPasswordToggles() {
+        document.querySelectorAll('input[type="password"]').forEach(inp => {
+            if (inp.dataset.pwEye) return;
+            inp.dataset.pwEye = '1';
+            const wrap = document.createElement('div');
+            wrap.className = 'pw-wrap';
+            inp.parentNode.insertBefore(wrap, inp);
+            wrap.appendChild(inp);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pw-eye';
+            btn.textContent = '👁️';
+            btn.title = 'Tahan untuk melihat password';
+            btn.setAttribute('aria-label', 'Tahan untuk melihat password');
+            // Tekan-tahan: terlihat selama ditekan, tersembunyi lagi begitu dilepas
+            // Ganti tipe kolom tanpa memindahkan kursor ketik (browser memindahkannya ke awal kalau tidak dijaga)
+            const setType = t => {
+                if (inp.type === t) return;
+                let st = null, en = null;
+                try { st = inp.selectionStart; en = inp.selectionEnd; } catch (e) {}
+                inp.type = t;
+                if (st !== null && document.activeElement === inp) {
+                    const restore = () => { try { inp.setSelectionRange(st, en); } catch (e) {} };
+                    restore();
+                    setTimeout(restore, 0);   // sebagian browser memindahkan kursor sesaat setelah tipe berubah
+                }
+            };
+            const show = () => { setType('text'); btn.textContent = '🙈'; btn.classList.add('holding'); };
+            const hide = () => { setType('password'); btn.textContent = '👁️'; btn.classList.remove('holding'); };
+            btn.addEventListener('pointerdown', e => { e.preventDefault(); show(); });   // preventDefault: fokus tetap di kolom, tanpa menu salin Safari
+            ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach(ev => btn.addEventListener(ev, hide));
+            btn.addEventListener('contextmenu', e => e.preventDefault());
+            btn.addEventListener('click', e => e.preventDefault());
+            // Keyboard: tahan Spasi/Enter saat tombol difokus
+            btn.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); show(); } });
+            btn.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') hide(); });
+            wrap.appendChild(btn);
+        });
+    }
+    // Sembunyikan lagi semua password (dipanggil setelah login/daftar/ganti password)
+    function hideAllPasswords() {
+        document.querySelectorAll('.pw-wrap > input').forEach(inp => { inp.type = 'password'; });
+        document.querySelectorAll('.pw-eye').forEach(b => { b.textContent = '👁️'; b.classList.remove('holding'); });
+    }
+
     // Preferensi tampilan per perangkat (tidak perlu disimpan di server)
     const STORAGE_PRINT_COLS = 'ksc_print_cols_v1';
     const STORAGE_HIDDEN_COLS = 'ksc_hidden_cols_v1';
@@ -1734,6 +1788,7 @@
             const { error: e2 } = await sb.auth.updateUser({ password: newPwd });
             if (e2) throw e2;
             ['inpOldPassword', 'inpNewPassword', 'inpConfirmPassword'].forEach(id => setVal(id, ''));
+            hideAllPasswords();
             alert('✅ Password berhasil diubah!');
         } catch (e) { alert('❌ Gagal: ' + translateAuthError(e)); }
     };
@@ -2254,6 +2309,7 @@
                 currentUser = { role: 'club', id: user.id, clubId: c.id, namaClub: c.nama_club, official: c.official, email: user.email };
             }
             await loadAll();
+            hideAllPasswords();
             hideLoginOverlay();
             applyRoleUI();
             subscribeRealtime();
@@ -4424,6 +4480,7 @@
     // INIT APLIKASI
     // ============================================================
     (async function initApp() {
+        setupPasswordToggles();
         try { const rawHidden = localStorage.getItem(STORAGE_HIDDEN_COLS); if (rawHidden) hiddenCols = new Set(JSON.parse(rawHidden)); } catch (e) {}
         groupEventMatrix = createPresetMatrix();
 
